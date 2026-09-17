@@ -17,15 +17,12 @@ MCP_HOST = os.environ.get("MEMORY_MCP_HOST", "127.0.0.1")
 MCP_PORT = int(os.environ.get("MEMORY_MCP_PORT", "8000"))
 PUBLIC_HOST = os.environ.get("MEMORY_MCP_PUBLIC_HOST", "memory.skyhighmonica.fyi").strip()
 TOOL_MODE = os.environ.get("MEMORY_MCP_TOOL_MODE", "full").strip().lower()
-VALID_TOOL_MODES = {"full", "recall-only", "ping-only"}
+VALID_TOOL_MODES = {"full", "recall-only", "recall-schema", "ping-only"}
 if TOOL_MODE not in VALID_TOOL_MODES:
     raise RuntimeError(
         f"Invalid MEMORY_MCP_TOOL_MODE={TOOL_MODE!r}; expected one of {sorted(VALID_TOOL_MODES)}"
     )
 
-# MCP Python SDK 默认只允许 localhost Host header，以防 DNS rebinding。
-# Memory MCP 通过 Cloudflare Tunnel 对外发布，因此显式只允许 localhost 和配置的公网域名，
-# 而不是关闭 DNS rebinding 防护。
 allowed_hosts = ["127.0.0.1:*", "localhost:*", "[::1]:*"]
 allowed_origins = ["http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*"]
 if PUBLIC_HOST:
@@ -57,33 +54,36 @@ def _headers() -> dict[str, str]:
 async def _gateway(path: str, payload: dict[str, Any]) -> dict[str, Any]:
     started = time.perf_counter()
     async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
-        response = await client.post(
-            f"{GATEWAY_BASE_URL}{path}", headers=_headers(), json=payload
-        )
+        response = await client.post(f"{GATEWAY_BASE_URL}{path}", headers=_headers(), json=payload)
         response.raise_for_status()
         data = response.json()
     data["mcp_adapter_ms"] = round((time.perf_counter() - started) * 1000, 1)
     return data
 
-# full：正常生产工具集。
-# recall-only：A/B 测试，只暴露纯读取记忆工具，排除 write/reflect 能力影响。
-# ping-only：最小 MCP 兼容性测试，不访问 Gateway/Hindsight。
+# 测试模式按复杂度逐级增加：
+# ping-only      : 无参数、固定字符串，不访问后端。
+# recall-schema  : 仅一个字符串参数、固定字符串，不访问后端；隔离 Tool input schema。
+# recall-only    : 真实 Recall（query + max_results），访问 Gateway/Hindsight。
+# full           : 正常三工具。
 if TOOL_MODE == "ping-only":
     @mcp.tool()
     async def ping() -> str:
         """只读连通性测试；返回固定文本，不访问任何外部服务。"""
         return "pong"
+
+elif TOOL_MODE == "recall-schema":
+    @mcp.tool()
+    async def memory_recall(query: str) -> str:
+        """最小只读记忆查询兼容性测试。"""
+        return f"recall schema ok: {query}"
+
 else:
     @mcp.tool()
     async def memory_recall(query: str, max_results: int = 10) -> dict[str, Any]:
         """快速查询过去的事实、决定、经历、项目进度和历史讨论。"""
         return await _gateway(
             "/v1/memories/recall",
-            {
-                "query": query,
-                "max_results": max(1, min(max_results, 100)),
-                "client_id": DEFAULT_CLIENT_ID,
-            },
+            {"query": query, "max_results": max(1, min(max_results, 100)), "client_id": DEFAULT_CLIENT_ID},
         )
 
     if TOOL_MODE == "full":
