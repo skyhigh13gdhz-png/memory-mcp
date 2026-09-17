@@ -7,6 +7,7 @@ import os, time
 from typing import Any
 import httpx
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
 GATEWAY_BASE_URL = os.environ.get("MEMORY_GATEWAY_URL", "http://127.0.0.1:8787").rstrip("/")
 GATEWAY_TOKEN = os.environ.get("MEMORY_GATEWAY_TOKEN", "")
@@ -14,6 +15,22 @@ DEFAULT_CLIENT_ID = os.environ.get("MEMORY_CLIENT_ID", "mcp-client")
 REQUEST_TIMEOUT = float(os.environ.get("MEMORY_GATEWAY_TIMEOUT", "60"))
 MCP_HOST = os.environ.get("MEMORY_MCP_HOST", "127.0.0.1")
 MCP_PORT = int(os.environ.get("MEMORY_MCP_PORT", "8000"))
+PUBLIC_HOST = os.environ.get("MEMORY_MCP_PUBLIC_HOST", "memory.skyhighmonica.fyi").strip()
+
+# MCP Python SDK 默认只允许 localhost Host header，以防 DNS rebinding。
+# Memory MCP 通过 Cloudflare Tunnel 对外发布，因此显式只允许 localhost 和配置的公网域名，
+# 而不是关闭 DNS rebinding 防护。
+allowed_hosts = ["127.0.0.1:*", "localhost:*", "[::1]:*"]
+allowed_origins = ["http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*"]
+if PUBLIC_HOST:
+    allowed_hosts.extend([PUBLIC_HOST, f"{PUBLIC_HOST}:*"])
+    allowed_origins.extend([f"https://{PUBLIC_HOST}", f"https://{PUBLIC_HOST}:*"])
+
+transport_security = TransportSecuritySettings(
+    enable_dns_rebinding_protection=True,
+    allowed_hosts=allowed_hosts,
+    allowed_origins=allowed_origins,
+)
 
 # 当前部署明确使用 MCP Python SDK 1.x。1.x 的 FastMCP 在构造器中接收 host/port，
 # run() 只选择 transport；不要套用 SDK main/2.x 分支的 run(host=..., port=...) API。
@@ -21,6 +38,7 @@ mcp = FastMCP(
     "Personal Memory",
     host=MCP_HOST,
     port=MCP_PORT,
+    transport_security=transport_security,
     instructions=("访问用户自己的长期外置记忆。普通事实查找使用 memory_recall；明确要求保存时使用 memory_retain；只有需要综合多条长期记忆时才使用 memory_reflect。"),
 )
 
