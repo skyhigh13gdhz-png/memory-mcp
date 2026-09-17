@@ -7,7 +7,10 @@ INSTALL_DIR="${MEMORY_MCP_INSTALL_DIR:-/opt/memory-mcp}"
 ENV_FILE="/etc/memory-mcp.env"
 SERVICE="memory-mcp"
 LOCAL_HTTP_PROXY="${MEMORY_MCP_HTTP_PROXY:-http://127.0.0.1:10809}"
-RUN_USER="${SUDO_USER:-root}"
+# 与现有 memory-gateway 的 systemd 安装策略保持一致。bootstrap 经 sudo 执行时，
+# /opt/memory-mcp 与 /etc/memory-mcp.env 都是 root 管理的运行时文件，服务也由 root 运行，
+# 避免 SUDO_USER 无法穿过 /opt 或读取受保护配置导致 CHDIR/EnvironmentFile 失败。
+RUN_USER="${MEMORY_MCP_RUN_USER:-root}"
 ok(){ printf '[✓] %s\n' "$*"; }; log(){ printf '\n[→] %s\n' "$*"; }; warn(){ printf '[!] %s\n' "$*"; }; die(){ printf '[✗] %s\n' "$*" >&2; exit 1; }
 [[ $EUID -eq 0 ]] || die '请使用 sudo 运行 bootstrap.sh。'
 printf '========== Memory MCP 一键安装 ==========\n'
@@ -37,7 +40,6 @@ GATEWAY_ENV="/opt/src/memory-gateway/.env"
 [[ -r "$GATEWAY_ENV" ]] || die "找不到现有 Gateway 配置：$GATEWAY_ENV"
 TOKEN="$(sed -n 's/^GATEWAY_API_TOKEN=//p' "$GATEWAY_ENV" | head -n1)"
 [[ -n "$TOKEN" ]] || die '现有 Gateway 配置中没有 GATEWAY_API_TOKEN。'
-# 每次部署都同步当前 Gateway Token，避免 Gateway 重装后 MCP 持有旧 Token。
 umask 077
 cat > "$ENV_FILE" <<EOF
 MEMORY_GATEWAY_URL=http://127.0.0.1:8787
@@ -76,7 +78,7 @@ WantedBy=multi-user.target
 EOF
 systemctl daemon-reload; systemctl enable "$SERVICE" >/dev/null; systemctl restart "$SERVICE"; sleep 2
 systemctl is-active --quiet "$SERVICE" || { journalctl -u "$SERVICE" -n 80 --no-pager; die 'Memory MCP 启动失败。'; }
-ok 'Memory MCP 已启动：127.0.0.1:8000/mcp，并设置开机自动恢复'
+ok "Memory MCP 已启动：127.0.0.1:8000/mcp（运行用户：${RUN_USER}），并设置开机自动恢复"
 
 log '执行 MCP → Gateway → Hindsight 自动验收'
 /usr/local/bin/memory-mcp test
