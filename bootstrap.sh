@@ -7,9 +7,6 @@ INSTALL_DIR="${MEMORY_MCP_INSTALL_DIR:-/opt/memory-mcp}"
 ENV_FILE="/etc/memory-mcp.env"
 SERVICE="memory-mcp"
 LOCAL_HTTP_PROXY="${MEMORY_MCP_HTTP_PROXY:-http://127.0.0.1:10809}"
-# 与现有 memory-gateway 的 systemd 安装策略保持一致。bootstrap 经 sudo 执行时，
-# /opt/memory-mcp 与 /etc/memory-mcp.env 都是 root 管理的运行时文件，服务也由 root 运行，
-# 避免 SUDO_USER 无法穿过 /opt 或读取受保护配置导致 CHDIR/EnvironmentFile 失败。
 RUN_USER="${MEMORY_MCP_RUN_USER:-root}"
 ok(){ printf '[✓] %s\n' "$*"; }; log(){ printf '\n[→] %s\n' "$*"; }; warn(){ printf '[!] %s\n' "$*"; }; die(){ printf '[✗] %s\n' "$*" >&2; exit 1; }
 [[ $EUID -eq 0 ]] || die '请使用 sudo 运行 bootstrap.sh。'
@@ -53,12 +50,18 @@ chmod 600 "$ENV_FILE"
 ok 'MCP 本地配置已与现有 Gateway 同步（Token 不显示、不进入 Git）'
 
 log '安装并启动 Memory MCP'
+# 旧服务可能处于 Restart=on-failure 的重启循环。必须先停掉，再替换整个 runtime；
+# 否则 systemd 会在 venv 被删除/重建的中间态重新拉起 Python，出现随机缺模块等假故障。
+systemctl stop "$SERVICE" 2>/dev/null || true
+systemctl reset-failed "$SERVICE" 2>/dev/null || true
 rm -rf "$INSTALL_DIR"; mkdir -p "$INSTALL_DIR/scripts"
 cp "$SOURCE_DIR/mcp_server.py" "$SOURCE_DIR/requirements.txt" "$INSTALL_DIR/"
 cp "$SOURCE_DIR/scripts/smoke-test.py" "$INSTALL_DIR/scripts/"
 python3 -m venv "$INSTALL_DIR/.venv"
 PIP=("$INSTALL_DIR/.venv/bin/pip")
 if [[ -n "$SOURCE_PROXY" ]]; then http_proxy="$SOURCE_PROXY" https_proxy="$SOURCE_PROXY" "${PIP[@]}" install -q --upgrade pip; http_proxy="$SOURCE_PROXY" https_proxy="$SOURCE_PROXY" "${PIP[@]}" install -q -r "$INSTALL_DIR/requirements.txt"; else "${PIP[@]}" install -q --upgrade pip; "${PIP[@]}" install -q -r "$INSTALL_DIR/requirements.txt"; fi
+"$INSTALL_DIR/.venv/bin/python" -c 'import httpx, mcp' || die 'Python 依赖安装不完整。'
+ok 'Python 依赖：完整'
 install -m 0755 "$SOURCE_DIR/bin/memory-mcp" /usr/local/bin/memory-mcp
 cat > "/etc/systemd/system/${SERVICE}.service" <<EOF
 [Unit]
@@ -77,7 +80,7 @@ RestartSec=2
 WantedBy=multi-user.target
 EOF
 systemctl daemon-reload; systemctl enable "$SERVICE" >/dev/null; systemctl restart "$SERVICE"; sleep 2
-systemctl is-active --quiet "$SERVICE" || { journalctl -u "$SERVICE" -n 80 --no-pager; die 'Memory MCP 启动失败。'; }
+systemctl is-active --quiet "$SERVICE" || { journalctl -u "$SERVICE" -b -n 80 --no-pager; die 'Memory MCP 启动失败。'; }
 ok "Memory MCP 已启动：127.0.0.1:8000/mcp（运行用户：${RUN_USER}），并设置开机自动恢复"
 
 log '执行 MCP → Gateway → Hindsight 自动验收'
