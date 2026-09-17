@@ -15,8 +15,12 @@ REQUEST_TIMEOUT = float(os.environ.get("MEMORY_GATEWAY_TIMEOUT", "60"))
 MCP_HOST = os.environ.get("MEMORY_MCP_HOST", "127.0.0.1")
 MCP_PORT = int(os.environ.get("MEMORY_MCP_PORT", "8000"))
 
+# 当前部署明确使用 MCP Python SDK 1.x。1.x 的 FastMCP 在构造器中接收 host/port，
+# run() 只选择 transport；不要套用 SDK main/2.x 分支的 run(host=..., port=...) API。
 mcp = FastMCP(
     "Personal Memory",
+    host=MCP_HOST,
+    port=MCP_PORT,
     instructions=("访问用户自己的长期外置记忆。普通事实查找使用 memory_recall；明确要求保存时使用 memory_retain；只有需要综合多条长期记忆时才使用 memory_reflect。"),
 )
 
@@ -49,5 +53,4 @@ async def memory_reflect(query: str) -> dict[str, Any]:
     return await _gateway("/v1/memories/reflect", {"query": query, "client_id": DEFAULT_CLIENT_ID})
 
 if __name__ == "__main__":
-    # 官方 MCP Python SDK 将 HTTP transport 的 host/port 作为 run() 参数。
-    mcp.run(transport="streamable-http", host=MCP_HOST, port=MCP_PORT)
+    mcp.run(transport="streamable-http")
