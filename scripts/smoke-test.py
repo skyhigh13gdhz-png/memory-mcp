@@ -34,6 +34,11 @@ async def main() -> None:
             await session.initialize()
             tools = await session.list_tools()
             names = [tool.name for tool in tools.tools]
+            if "speaker_probe" in names:
+                await call(session, "speaker_probe", {"message": "bootstrap speaker probe", "speaker": "liangzai"})
+                print("\n[✓] speaker-probe 模式验收通过；未访问 Gateway/Hindsight。")
+                return
+
             required = {"memory_retain", "memory_recall", "memory_reflect"}
             missing = required - set(names)
             if missing:
@@ -41,9 +46,9 @@ async def main() -> None:
             print(f"[✓] MCP tools: {', '.join(sorted(required))}")
 
             timings = {}
-            timings["retain"] = await call(session, "memory_retain", {"content": TEST_FACT})
-            timings["recall"] = await call(session, "memory_recall", {"query": "外置记忆第一阶段优先测试什么？", "max_results": 5})
-            timings["reflect"] = await call(session, "memory_reflect", {"query": "为什么外置记忆第一阶段先测试手动调用效率？"})
+            timings["retain"] = await call(session, "memory_retain", {"content": TEST_FACT, "speaker": "liangzai"})
+            timings["recall"] = await call(session, "memory_recall", {"query": "外置记忆第一阶段优先测试什么？", "speaker": "liangzai", "max_results": 5})
+            timings["reflect"] = await call(session, "memory_reflect", {"query": "为什么外置记忆第一阶段先测试手动调用效率？", "speaker": "liangzai"})
 
     print("\n========== Memory MCP 端到端验收 ==========")
     print("[✓] MCP → Gateway → Hindsight Retain")
