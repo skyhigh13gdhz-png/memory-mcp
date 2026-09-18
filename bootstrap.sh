@@ -19,16 +19,40 @@ python3 -m venv --help >/dev/null 2>&1 || die '缺少 Python venv。'
 curl -fsS --max-time 5 http://127.0.0.1:8787/health >/dev/null || die 'Memory Gateway 127.0.0.1:8787 不可访问。'
 ok 'Memory Gateway：可以访问'
 
-log '检查源码网络'
+log '检查源码网络（所有探测均有硬超时，避免腾讯云卡死）'
 SOURCE_PROXY=""
-if curl -fsSIL --max-time 8 https://github.com >/dev/null 2>&1; then SOURCE="$GITHUB_REPO"; ok 'GitHub：直连可用，使用 GitHub Source of Truth'
-elif curl -fsSIL --max-time 8 --proxy "$LOCAL_HTTP_PROXY" https://github.com >/dev/null 2>&1; then SOURCE="$GITHUB_REPO"; SOURCE_PROXY="$LOCAL_HTTP_PROXY"; ok 'GitHub：通过现有本机代理可访问，继续使用 GitHub Source of Truth'
-elif curl -fsSIL --max-time 8 https://gitee.com >/dev/null 2>&1 && git ls-remote "$GITEE_REPO" HEAD >/dev/null 2>&1; then SOURCE="$GITEE_REPO"; warn 'GitHub 不可达，使用已存在的 Gitee 只读镜像'
-else die '当前无法取得 Memory MCP 源码。'; fi
+git_probe(){
+  timeout 12s git "$@" >/dev/null 2>&1
+}
+git_probe_proxy(){
+  timeout 12s git -c "http.proxy=$LOCAL_HTTP_PROXY" -c "https.proxy=$LOCAL_HTTP_PROXY" "$@" >/dev/null 2>&1
+}
+if git_probe ls-remote "$GITHUB_REPO" HEAD; then
+  SOURCE="$GITHUB_REPO"; ok 'GitHub：git 直连可用，使用 GitHub Source of Truth'
+elif git_probe_proxy ls-remote "$GITHUB_REPO" HEAD; then
+  SOURCE="$GITHUB_REPO"; SOURCE_PROXY="$LOCAL_HTTP_PROXY"; ok 'GitHub：通过本机代理可用'
+elif git_probe ls-remote "$GITEE_REPO" HEAD; then
+  SOURCE="$GITEE_REPO"; warn 'GitHub 不可达，使用 Gitee 只读镜像'
+else
+  die '12 秒内无法取得 Memory MCP 源码；已主动退出，不会无限卡在 git fetch。'
+fi
 
-git_run(){ if [[ -n "$SOURCE_PROXY" ]]; then git -c "http.proxy=$SOURCE_PROXY" -c "https.proxy=$SOURCE_PROXY" "$@"; else git "$@"; fi; }
+git_run(){
+  if [[ -n "$SOURCE_PROXY" ]]; then
+    timeout 90s git -c "http.proxy=$SOURCE_PROXY" -c "https.proxy=$SOURCE_PROXY" "$@"
+  else
+    timeout 90s git "$@"
+  fi
+}
 mkdir -p "$(dirname "$SOURCE_DIR")"
-if [[ -d "$SOURCE_DIR/.git" ]]; then git_run -C "$SOURCE_DIR" fetch "$SOURCE" main; git -C "$SOURCE_DIR" checkout main >/dev/null 2>&1; git -C "$SOURCE_DIR" reset --hard FETCH_HEAD >/dev/null; else rm -rf "$SOURCE_DIR"; git_run clone "$SOURCE" "$SOURCE_DIR" >/dev/null; fi
+if [[ -d "$SOURCE_DIR/.git" ]]; then
+  git_run -C "$SOURCE_DIR" fetch "$SOURCE" main || die '源码 fetch 失败或 90 秒超时。'
+  git -C "$SOURCE_DIR" checkout main >/dev/null 2>&1
+  git -C "$SOURCE_DIR" reset --hard FETCH_HEAD >/dev/null
+else
+  rm -rf "$SOURCE_DIR"
+  git_run clone "$SOURCE" "$SOURCE_DIR" >/dev/null || die '源码 clone 失败或 90 秒超时。'
+fi
 git -C "$SOURCE_DIR" remote set-url origin "$GITHUB_REPO"
 ok 'Memory MCP 源码已准备；origin 保持 GitHub'
 
@@ -37,6 +61,15 @@ GATEWAY_ENV="/opt/src/memory-gateway/.env"
 [[ -r "$GATEWAY_ENV" ]] || die "找不到现有 Gateway 配置：$GATEWAY_ENV"
 TOKEN="$(sed -n 's/^GATEWAY_API_TOKEN=//p' "$GATEWAY_ENV" | head -n1)"
 [[ -n "$TOKEN" ]] || die '现有 Gateway 配置中没有 GATEWAY_API_TOKEN。'
+
+# 保留已经配置好的公网 Host、工具模式等非密钥运行参数，避免升级把 ChatGPT 接入配置冲掉。
+PUBLIC_HOST="$(sed -n 's/^MEMORY_MCP_PUBLIC_HOST=//p' "$ENV_FILE" 2>/dev/null | tail -n1 || true)"
+TOOL_MODE="$(sed -n 's/^MEMORY_MCP_TOOL_MODE=//p' "$ENV_FILE" 2>/dev/null | tail -n1 || true)"
+LOG_LEVEL="$(sed -n 's/^MEMORY_MCP_LOG_LEVEL=//p' "$ENV_FILE" 2>/dev/null | tail -n1 || true)"
+PUBLIC_HOST="${PUBLIC_HOST:-memory.skyhighmonica.fyi}"
+TOOL_MODE="${TOOL_MODE:-full}"
+LOG_LEVEL="${LOG_LEVEL:-INFO}"
+
 umask 077
 cat > "$ENV_FILE" <<EOF
 MEMORY_GATEWAY_URL=http://127.0.0.1:8787
@@ -45,13 +78,14 @@ MEMORY_CLIENT_ID=mcp-client
 MEMORY_GATEWAY_TIMEOUT=60
 MEMORY_MCP_HOST=127.0.0.1
 MEMORY_MCP_PORT=8000
+MEMORY_MCP_PUBLIC_HOST=$PUBLIC_HOST
+MEMORY_MCP_TOOL_MODE=$TOOL_MODE
+MEMORY_MCP_LOG_LEVEL=$LOG_LEVEL
 EOF
 chmod 600 "$ENV_FILE"
-ok 'MCP 本地配置已与现有 Gateway 同步（Token 不显示、不进入 Git）'
+ok 'MCP 配置已同步，并保留公网 Host / Tool Mode / Log Level'
 
 log '安装并启动 Memory MCP'
-# 旧服务可能处于 Restart=on-failure 的重启循环。必须先停掉，再替换整个 runtime；
-# 否则 systemd 会在 venv 被删除/重建的中间态重新拉起 Python，出现随机缺模块等假故障。
 systemctl stop "$SERVICE" 2>/dev/null || true
 systemctl reset-failed "$SERVICE" 2>/dev/null || true
 rm -rf "$INSTALL_DIR"; mkdir -p "$INSTALL_DIR/scripts"
@@ -59,7 +93,13 @@ cp "$SOURCE_DIR/mcp_server.py" "$SOURCE_DIR/requirements.txt" "$INSTALL_DIR/"
 cp "$SOURCE_DIR/scripts/smoke-test.py" "$INSTALL_DIR/scripts/"
 python3 -m venv "$INSTALL_DIR/.venv"
 PIP=("$INSTALL_DIR/.venv/bin/pip")
-if [[ -n "$SOURCE_PROXY" ]]; then http_proxy="$SOURCE_PROXY" https_proxy="$SOURCE_PROXY" "${PIP[@]}" install -q --upgrade pip; http_proxy="$SOURCE_PROXY" https_proxy="$SOURCE_PROXY" "${PIP[@]}" install -q -r "$INSTALL_DIR/requirements.txt"; else "${PIP[@]}" install -q --upgrade pip; "${PIP[@]}" install -q -r "$INSTALL_DIR/requirements.txt"; fi
+if [[ -n "$SOURCE_PROXY" ]]; then
+  http_proxy="$SOURCE_PROXY" https_proxy="$SOURCE_PROXY" timeout 120s "${PIP[@]}" install -q --upgrade pip
+  http_proxy="$SOURCE_PROXY" https_proxy="$SOURCE_PROXY" timeout 180s "${PIP[@]}" install -q -r "$INSTALL_DIR/requirements.txt"
+else
+  timeout 120s "${PIP[@]}" install -q --upgrade pip
+  timeout 180s "${PIP[@]}" install -q -r "$INSTALL_DIR/requirements.txt"
+fi
 "$INSTALL_DIR/.venv/bin/python" -c 'import httpx, mcp' || die 'Python 依赖安装不完整。'
 ok 'Python 依赖：完整'
 install -m 0755 "$SOURCE_DIR/bin/memory-mcp" /usr/local/bin/memory-mcp
