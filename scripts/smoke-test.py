@@ -13,18 +13,21 @@ MCP_URL = os.environ.get("MEMORY_MCP_TEST_URL", "http://127.0.0.1:8000/mcp")
 TEST_FACT = "外置记忆第一阶段优先测试手动调用效率。"
 
 
-async def call(session: ClientSession, name: str, arguments: dict) -> float:
+async def call(session: ClientSession, name: str, arguments: dict, *, verbose: bool = False) -> float:
     started = time.perf_counter()
     result = await session.call_tool(name, arguments=arguments)
     elapsed = round((time.perf_counter() - started) * 1000, 1)
     print(f"\n{name}: MCP 客户端端到端 {elapsed} ms")
     if result.isError:
         raise RuntimeError(f"{name} failed: {result.content}")
-    structured = getattr(result, "structuredContent", None)
-    if structured is not None:
-        print(json.dumps(structured, ensure_ascii=False, indent=2))
+    if verbose:
+        structured = getattr(result, "structuredContent", None)
+        if structured is not None:
+            print(json.dumps(structured, ensure_ascii=False, indent=2))
+        else:
+            print(result.content)
     else:
-        print(result.content)
+        print(f"[✓] {name} 返回成功（响应正文已隐藏，避免在部署终端暴露记忆内容）")
     return elapsed
 
 
