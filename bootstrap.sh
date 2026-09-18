@@ -65,9 +65,11 @@ TOKEN="$(sed -n 's/^GATEWAY_API_TOKEN=//p' "$GATEWAY_ENV" | head -n1)"
 # 保留已经配置好的公网 Host、工具模式等非密钥运行参数，避免升级把 ChatGPT 接入配置冲掉。
 PUBLIC_HOST="$(sed -n 's/^MEMORY_MCP_PUBLIC_HOST=//p' "$ENV_FILE" 2>/dev/null | tail -n1 || true)"
 TOOL_MODE="$(sed -n 's/^MEMORY_MCP_TOOL_MODE=//p' "$ENV_FILE" 2>/dev/null | tail -n1 || true)"
+TIMING_ENABLED="$(sed -n 's/^MEMORY_MCP_TIMING_ENABLED=//p' "$ENV_FILE" 2>/dev/null | tail -n1 || true)"
 LOG_LEVEL="$(sed -n 's/^MEMORY_MCP_LOG_LEVEL=//p' "$ENV_FILE" 2>/dev/null | tail -n1 || true)"
 PUBLIC_HOST="${PUBLIC_HOST:-memory.skyhighmonica.fyi}"
 TOOL_MODE="${TOOL_MODE:-full}"
+TIMING_ENABLED="${TIMING_ENABLED:-0}"
 LOG_LEVEL="${LOG_LEVEL:-INFO}"
 
 umask 077
@@ -80,6 +82,7 @@ MEMORY_MCP_HOST=127.0.0.1
 MEMORY_MCP_PORT=8000
 MEMORY_MCP_PUBLIC_HOST=$PUBLIC_HOST
 MEMORY_MCP_TOOL_MODE=$TOOL_MODE
+MEMORY_MCP_TIMING_ENABLED=$TIMING_ENABLED
 MEMORY_MCP_LOG_LEVEL=$LOG_LEVEL
 EOF
 chmod 600 "$ENV_FILE"
