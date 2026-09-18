@@ -167,32 +167,32 @@ elif TOOL_MODE == "recall-schema":
 
 else:
     @mcp.tool()
-    async def memory_recall(query: str, max_results: int = 10) -> dict[str, Any]:
+    async def memory_recall(query: str, speaker: str, max_results: int = 10) -> dict[str, Any]:
         """快速查询过去的事实、决定、经历、项目进度和历史讨论。"""
         return await _gateway(
             "/v1/memories/recall",
-            {"query": query, "max_results": max(1, min(max_results, 100)), "client_id": DEFAULT_CLIENT_ID},
+            {"query": query, "speaker": speaker, "max_results": max(1, min(max_results, 100)), "client_id": DEFAULT_CLIENT_ID},
             tool="memory_recall",
             timeout=RECALL_TIMEOUT,
         )
 
     if TOOL_MODE == "full":
         @mcp.tool()
-        async def memory_retain(content: str) -> dict[str, Any]:
+        async def memory_retain(content: str, speaker: str) -> dict[str, Any]:
             """保存用户明确要求长期记住的信息。不要用于普通闲聊或重复保存整段聊天。"""
             return await _gateway(
                 "/v1/memories/retain",
-                {"content": content, "client_id": DEFAULT_CLIENT_ID},
+                {"content": content, "speaker": speaker, "client_id": DEFAULT_CLIENT_ID},
                 tool="memory_retain",
                 timeout=RETAIN_TIMEOUT,
             )
 
         @mcp.tool()
-        async def memory_reflect(query: str) -> dict[str, Any]:
+        async def memory_reflect(query: str, speaker: str) -> dict[str, Any]:
             """综合多条长期记忆进行归纳或反思。普通事实查找不要使用本工具。"""
             return await _gateway(
                 "/v1/memories/reflect",
-                {"query": query, "client_id": DEFAULT_CLIENT_ID},
+                {"query": query, "speaker": speaker, "client_id": DEFAULT_CLIENT_ID},
                 tool="memory_reflect",
                 timeout=REFLECT_TIMEOUT,
             )
