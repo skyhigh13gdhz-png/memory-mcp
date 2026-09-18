@@ -82,7 +82,16 @@ full           ✅ Recall / Retain；Reflect 已通过服务器 smoke，ChatGPT 
 
 ## 性能日志
 
-`mcp_server.py` 会为真实 Recall / Retain / Reflect 输出不包含记忆正文的结构化日志：
+详细性能打点**生产默认关闭**（`MEMORY_MCP_TIMING_ENABLED=0`），避免长期为正常请求生成 UUID、多个分段计时和结构化日志。需要定位延迟时临时开启：
+
+```bash
+memory-mcp timing on
+# 完成一轮 Recall / Retain / Reflect 测试
+memory-mcp logs 200
+memory-mcp timing off
+```
+
+关闭时只保留原本就需要返回的 `mcp_adapter_ms` 总耗时计数，不做详细分段日志。开启后，`mcp_server.py` 会为真实 Recall / Retain / Reflect 输出不包含记忆正文的结构化日志：
 
 ```text
 event=tool_start request_id=... tool=memory_recall path=/v1/memories/recall
