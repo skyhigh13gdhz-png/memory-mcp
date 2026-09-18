@@ -3,11 +3,22 @@
 职责边界：不直接访问 Hindsight、不保存个人记忆、不包含客户端专属逻辑。
 """
 from __future__ import annotations
-import os, time
+import json
+import logging
+import os
+import time
+import uuid
 from typing import Any
+
 import httpx
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
+
+logging.basicConfig(
+    level=os.environ.get("MEMORY_MCP_LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+logger = logging.getLogger("memory-mcp")
 
 GATEWAY_BASE_URL = os.environ.get("MEMORY_GATEWAY_URL", "http://127.0.0.1:8787").rstrip("/")
 GATEWAY_TOKEN = os.environ.get("MEMORY_GATEWAY_TOKEN", "")
@@ -51,14 +62,62 @@ def _headers() -> dict[str, str]:
         raise RuntimeError("MEMORY_GATEWAY_TOKEN is not configured")
     return {"Authorization": f"Bearer {GATEWAY_TOKEN}"}
 
-async def _gateway(path: str, payload: dict[str, Any]) -> dict[str, Any]:
-    started = time.perf_counter()
-    async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
-        response = await client.post(f"{GATEWAY_BASE_URL}{path}", headers=_headers(), json=payload)
-        response.raise_for_status()
-        data = response.json()
-    data["mcp_adapter_ms"] = round((time.perf_counter() - started) * 1000, 1)
-    return data
+def _timing_from_gateway(data: dict[str, Any]) -> dict[str, Any]:
+    """只提取 Gateway 已返回的计时字段，避免日志打印记忆正文。"""
+    return {
+        key: value
+        for key, value in data.items()
+        if key.endswith("_ms") or key in {"timing", "timings"}
+    }
+
+async def _gateway(path: str, payload: dict[str, Any], *, tool: str) -> dict[str, Any]:
+    request_id = uuid.uuid4().hex[:12]
+    total_started = time.perf_counter()
+    logger.info(
+        "event=tool_start request_id=%s tool=%s path=%s",
+        request_id,
+        tool,
+        path,
+    )
+    try:
+        connect_started = time.perf_counter()
+        async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+            client_ready_ms = round((time.perf_counter() - connect_started) * 1000, 1)
+            upstream_started = time.perf_counter()
+            response = await client.post(
+                f"{GATEWAY_BASE_URL}{path}", headers=_headers(), json=payload
+            )
+            gateway_http_ms = round((time.perf_counter() - upstream_started) * 1000, 1)
+            response.raise_for_status()
+            decode_started = time.perf_counter()
+            data = response.json()
+            decode_ms = round((time.perf_counter() - decode_started) * 1000, 1)
+
+        total_ms = round((time.perf_counter() - total_started) * 1000, 1)
+        data["mcp_adapter_ms"] = total_ms
+        logger.info(
+            "event=tool_end request_id=%s tool=%s status=%s client_ready_ms=%.1f "
+            "gateway_http_ms=%.1f decode_ms=%.1f mcp_total_ms=%.1f gateway_timing=%s",
+            request_id,
+            tool,
+            response.status_code,
+            client_ready_ms,
+            gateway_http_ms,
+            decode_ms,
+            total_ms,
+            json.dumps(_timing_from_gateway(data), ensure_ascii=False, separators=(",", ":")),
+        )
+        return data
+    except Exception as exc:
+        total_ms = round((time.perf_counter() - total_started) * 1000, 1)
+        logger.exception(
+            "event=tool_error request_id=%s tool=%s mcp_total_ms=%.1f error_type=%s",
+            request_id,
+            tool,
+            total_ms,
+            type(exc).__name__,
+        )
+        raise
 
 # 测试模式按复杂度逐级增加：
 # ping-only      : 无参数、固定字符串，不访问后端。
@@ -84,6 +143,7 @@ else:
         return await _gateway(
             "/v1/memories/recall",
             {"query": query, "max_results": max(1, min(max_results, 100)), "client_id": DEFAULT_CLIENT_ID},
+            tool="memory_recall",
         )
 
     if TOOL_MODE == "full":
@@ -93,6 +153,7 @@ else:
             return await _gateway(
                 "/v1/memories/retain",
                 {"content": content, "client_id": DEFAULT_CLIENT_ID},
+                tool="memory_retain",
             )
 
         @mcp.tool()
@@ -101,6 +162,7 @@ else:
             return await _gateway(
                 "/v1/memories/reflect",
                 {"query": query, "client_id": DEFAULT_CLIENT_ID},
+                tool="memory_reflect",
             )
 
 if __name__ == "__main__":
