@@ -57,7 +57,8 @@ mcp = FastMCP(
     transport_security=transport_security,
     instructions=(
         "访问共享账号的长期外置记忆。所有正式记忆工具都必须传稳定 speaker ID。"
-        "默认 speaker=monica；若当前客户端/Project 明确指定 liangzai，或用户在当前会话明确声明身份，则以明确身份为准。"
+        "默认 speaker=monica。只有当前 Project/客户端指令明确固定为 liangzai，或用户在当前聊天中亲自明确声明“我是靓仔/良仔”时，才使用 liangzai。"
+        "禁止根据其他聊天、跨聊天记忆、历史习惯、话题内容或模型推断把默认 speaker 改成 liangzai。"
         "别名统一：靓仔/良仔→liangzai；Monica/灼暄/猫呢咔→monica。"
         "普通事实查找使用 memory_recall；明确要求保存时使用 memory_retain；"
         "只有需要综合多条长期记忆时才使用 memory_reflect。"
@@ -170,8 +171,8 @@ elif TOOL_MODE == "recall-schema":
 
 else:
     @mcp.tool()
-    async def memory_recall(query: str, speaker: str, max_results: int = 10) -> dict[str, Any]:
-        """按当前讲述者查询过去的事实、决定、经历、项目进度和历史讨论。speaker 只传稳定 ID：liangzai 或 monica。"""
+    async def memory_recall(query: str, speaker: str = "monica", max_results: int = 10) -> dict[str, Any]:
+        """按当前讲述者查询过去的事实、决定、经历、项目进度和历史讨论。speaker 默认 monica；只有当前 Project/当前聊天明确身份时才覆盖。"""
         return await _gateway(
             "/v1/memories/recall",
             {"query": query, "speaker": speaker, "max_results": max(1, min(max_results, 100)), "client_id": DEFAULT_CLIENT_ID},
@@ -181,7 +182,7 @@ else:
 
     if TOOL_MODE == "full":
         @mcp.tool()
-        async def memory_retain(content: str, speaker: str) -> dict[str, Any]:
+        async def memory_retain(content: str, speaker: str = "monica") -> dict[str, Any]:
             """保存当前讲述者明确要求长期记住的信息。speaker 只传稳定 ID：liangzai 或 monica。不要用于普通闲聊或重复保存整段聊天。"""
             return await _gateway(
                 "/v1/memories/retain",
@@ -191,7 +192,7 @@ else:
             )
 
         @mcp.tool()
-        async def memory_reflect(query: str, speaker: str) -> dict[str, Any]:
+        async def memory_reflect(query: str, speaker: str = "monica") -> dict[str, Any]:
             """只基于当前讲述者的长期记忆进行归纳或反思。speaker 只传稳定 ID：liangzai 或 monica。普通事实查找不要使用本工具。"""
             return await _gateway(
                 "/v1/memories/reflect",
