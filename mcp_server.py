@@ -142,11 +142,18 @@ async def _gateway(
         raise
 
 # 测试模式按复杂度逐级增加：
-# ping-only      : 无参数、固定字符串，不访问后端。\n# speaker-probe  : 验证 ChatGPT 是否会按 Project instructions 自动传 speaker；不访问后端。
+# ping-only      : 无参数、固定字符串，不访问后端。
+# speaker-probe  : 验证 ChatGPT 是否会按 Project instructions 自动传 speaker；不访问后端。
 # recall-schema  : 仅一个字符串参数、固定字符串，不访问后端；隔离 Tool input schema。
 # recall-only    : 真实 Recall（query + max_results），访问 Gateway/Hindsight。
 # full           : 正常三工具。
-if TOOL_MODE == "speaker-probe":\n    @mcp.tool()\n    async def speaker_probe(message: str, speaker: str) -> dict[str, str]:\n        """测试讲述者参数能否由客户端上下文稳定传入；不访问 Gateway/Hindsight。"""\n        return {"ok": "true", "speaker": speaker, "message": message}\n\nelif TOOL_MODE == "ping-only":
+if TOOL_MODE == "speaker-probe":
+    @mcp.tool()
+    async def speaker_probe(message: str, speaker: str) -> dict[str, str]:
+        """测试讲述者参数能否由客户端上下文稳定传入；不访问 Gateway/Hindsight。"""
+        return {"ok": "true", "speaker": speaker, "message": message}
+
+elif TOOL_MODE == "ping-only":
     @mcp.tool()
     async def ping() -> str:
         """只读连通性测试；返回固定文本，不访问任何外部服务。"""
