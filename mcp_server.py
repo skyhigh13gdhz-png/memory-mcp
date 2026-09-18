@@ -24,6 +24,9 @@ GATEWAY_BASE_URL = os.environ.get("MEMORY_GATEWAY_URL", "http://127.0.0.1:8787")
 GATEWAY_TOKEN = os.environ.get("MEMORY_GATEWAY_TOKEN", "")
 DEFAULT_CLIENT_ID = os.environ.get("MEMORY_CLIENT_ID", "mcp-client")
 REQUEST_TIMEOUT = float(os.environ.get("MEMORY_GATEWAY_TIMEOUT", "60"))
+RECALL_TIMEOUT = float(os.environ.get("MEMORY_RECALL_TIMEOUT", "15"))
+RETAIN_TIMEOUT = float(os.environ.get("MEMORY_RETAIN_TIMEOUT", "90"))
+REFLECT_TIMEOUT = float(os.environ.get("MEMORY_REFLECT_TIMEOUT", "180"))
 MCP_HOST = os.environ.get("MEMORY_MCP_HOST", "127.0.0.1")
 MCP_PORT = int(os.environ.get("MEMORY_MCP_PORT", "8000"))
 PUBLIC_HOST = os.environ.get("MEMORY_MCP_PUBLIC_HOST", "memory.skyhighmonica.fyi").strip()
@@ -71,7 +74,13 @@ def _timing_from_gateway(data: dict[str, Any]) -> dict[str, Any]:
         if key.endswith("_ms") or key in {"timing", "timings"}
     }
 
-async def _gateway(path: str, payload: dict[str, Any], *, tool: str) -> dict[str, Any]:
+async def _gateway(
+    path: str,
+    payload: dict[str, Any],
+    *,
+    tool: str,
+    timeout: float | None = None,
+) -> dict[str, Any]:
     # 生产默认关闭详细打点。关闭时不生成 UUID、不序列化 timing 日志，
     # 只保留原有请求路径和一个 perf_counter 用于 mcp_adapter_ms。
     request_id = uuid.uuid4().hex[:12] if TIMING_ENABLED else ""
@@ -86,7 +95,7 @@ async def _gateway(path: str, payload: dict[str, Any], *, tool: str) -> dict[str
     try:
         if TIMING_ENABLED:
             connect_started = time.perf_counter()
-        async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+        async with httpx.AsyncClient(timeout=timeout or REQUEST_TIMEOUT) as client:
             if TIMING_ENABLED:
                 client_ready_ms = round((time.perf_counter() - connect_started) * 1000, 1)
                 upstream_started = time.perf_counter()
@@ -157,6 +166,7 @@ else:
             "/v1/memories/recall",
             {"query": query, "max_results": max(1, min(max_results, 100)), "client_id": DEFAULT_CLIENT_ID},
             tool="memory_recall",
+            timeout=RECALL_TIMEOUT,
         )
 
     if TOOL_MODE == "full":
@@ -167,6 +177,7 @@ else:
                 "/v1/memories/retain",
                 {"content": content, "client_id": DEFAULT_CLIENT_ID},
                 tool="memory_retain",
+                timeout=RETAIN_TIMEOUT,
             )
 
         @mcp.tool()
@@ -176,6 +187,7 @@ else:
                 "/v1/memories/reflect",
                 {"query": query, "client_id": DEFAULT_CLIENT_ID},
                 tool="memory_reflect",
+                timeout=REFLECT_TIMEOUT,
             )
 
 if __name__ == "__main__":
