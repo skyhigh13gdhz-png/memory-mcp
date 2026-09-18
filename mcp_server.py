@@ -28,6 +28,7 @@ MCP_HOST = os.environ.get("MEMORY_MCP_HOST", "127.0.0.1")
 MCP_PORT = int(os.environ.get("MEMORY_MCP_PORT", "8000"))
 PUBLIC_HOST = os.environ.get("MEMORY_MCP_PUBLIC_HOST", "memory.skyhighmonica.fyi").strip()
 TOOL_MODE = os.environ.get("MEMORY_MCP_TOOL_MODE", "full").strip().lower()
+TIMING_ENABLED = os.environ.get("MEMORY_MCP_TIMING_ENABLED", "0").strip().lower() in {"1", "true", "yes", "on"}
 VALID_TOOL_MODES = {"full", "recall-only", "recall-schema", "ping-only"}
 if TOOL_MODE not in VALID_TOOL_MODES:
     raise RuntimeError(
@@ -71,52 +72,64 @@ def _timing_from_gateway(data: dict[str, Any]) -> dict[str, Any]:
     }
 
 async def _gateway(path: str, payload: dict[str, Any], *, tool: str) -> dict[str, Any]:
-    request_id = uuid.uuid4().hex[:12]
+    # 生产默认关闭详细打点。关闭时不生成 UUID、不序列化 timing 日志，
+    # 只保留原有请求路径和一个 perf_counter 用于 mcp_adapter_ms。
+    request_id = uuid.uuid4().hex[:12] if TIMING_ENABLED else ""
     total_started = time.perf_counter()
-    logger.info(
-        "event=tool_start request_id=%s tool=%s path=%s",
-        request_id,
-        tool,
-        path,
-    )
+    if TIMING_ENABLED:
+        logger.info(
+            "event=tool_start request_id=%s tool=%s path=%s",
+            request_id,
+            tool,
+            path,
+        )
     try:
-        connect_started = time.perf_counter()
+        if TIMING_ENABLED:
+            connect_started = time.perf_counter()
         async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
-            client_ready_ms = round((time.perf_counter() - connect_started) * 1000, 1)
-            upstream_started = time.perf_counter()
+            if TIMING_ENABLED:
+                client_ready_ms = round((time.perf_counter() - connect_started) * 1000, 1)
+                upstream_started = time.perf_counter()
             response = await client.post(
                 f"{GATEWAY_BASE_URL}{path}", headers=_headers(), json=payload
             )
-            gateway_http_ms = round((time.perf_counter() - upstream_started) * 1000, 1)
+            if TIMING_ENABLED:
+                gateway_http_ms = round((time.perf_counter() - upstream_started) * 1000, 1)
             response.raise_for_status()
-            decode_started = time.perf_counter()
+            if TIMING_ENABLED:
+                decode_started = time.perf_counter()
             data = response.json()
-            decode_ms = round((time.perf_counter() - decode_started) * 1000, 1)
+            if TIMING_ENABLED:
+                decode_ms = round((time.perf_counter() - decode_started) * 1000, 1)
 
         total_ms = round((time.perf_counter() - total_started) * 1000, 1)
         data["mcp_adapter_ms"] = total_ms
-        logger.info(
-            "event=tool_end request_id=%s tool=%s status=%s client_ready_ms=%.1f "
-            "gateway_http_ms=%.1f decode_ms=%.1f mcp_total_ms=%.1f gateway_timing=%s",
-            request_id,
-            tool,
-            response.status_code,
-            client_ready_ms,
-            gateway_http_ms,
-            decode_ms,
-            total_ms,
-            json.dumps(_timing_from_gateway(data), ensure_ascii=False, separators=(",", ":")),
-        )
+        if TIMING_ENABLED:
+            logger.info(
+                "event=tool_end request_id=%s tool=%s status=%s client_ready_ms=%.1f "
+                "gateway_http_ms=%.1f decode_ms=%.1f mcp_total_ms=%.1f gateway_timing=%s",
+                request_id,
+                tool,
+                response.status_code,
+                client_ready_ms,
+                gateway_http_ms,
+                decode_ms,
+                total_ms,
+                json.dumps(_timing_from_gateway(data), ensure_ascii=False, separators=(",", ":")),
+            )
         return data
     except Exception as exc:
         total_ms = round((time.perf_counter() - total_started) * 1000, 1)
-        logger.exception(
-            "event=tool_error request_id=%s tool=%s mcp_total_ms=%.1f error_type=%s",
-            request_id,
-            tool,
-            total_ms,
-            type(exc).__name__,
-        )
+        if TIMING_ENABLED:
+            logger.exception(
+                "event=tool_error request_id=%s tool=%s mcp_total_ms=%.1f error_type=%s",
+                request_id,
+                tool,
+                total_ms,
+                type(exc).__name__,
+            )
+        else:
+            logger.error("tool=%s failed error_type=%s", tool, type(exc).__name__)
         raise
 
 # 测试模式按复杂度逐级增加：
