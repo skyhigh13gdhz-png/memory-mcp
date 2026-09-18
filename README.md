@@ -117,3 +117,27 @@ event=tool_end request_id=... tool=memory_recall status=200 client_ready_ms=... 
 4. 固化 Cloudflare / ChatGPT / 迁移 SOP；
 5. 测试机完整验收后，再 clean deploy 到腾讯云正式机；
 6. Raw Store、自动 Retain、项目级自动触发在基础效率验证之后再做。
+
+
+## Speaker 隔离（共享 ChatGPT 账号）
+
+正式工具 `memory_retain`、`memory_recall`、`memory_reflect` 都要求传稳定 `speaker` ID。
+
+当前约定：
+
+- `liangzai`：靓仔 / 良仔
+- `monica`：Monica / 灼暄 / 猫呢咔
+- 默认：`monica`
+- 客户端或 Project 明确指定身份时，明确身份覆盖默认值。
+
+Gateway 会把 Speaker 作为 Hindsight tag（`speaker:<id>`）写入；Recall / Reflect 使用 strict tag filter，避免共享 memory bank 中不同讲述者的记忆串线。
+
+测试模式切换不再直接编辑 `/etc/memory-mcp.env`：
+
+```bash
+memory-mcp mode speaker-probe
+memory-mcp mode full
+memory-mcp mode status
+```
+
+注意：Speaker 功能上线前写入的旧记忆没有 `speaker:<id>` tag，在 strict 模式下不会自动混入任何人的结果。应通过一次性迁移明确归属后再加入 Speaker 范围。
