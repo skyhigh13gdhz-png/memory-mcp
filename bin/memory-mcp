@@ -60,6 +60,28 @@ timing() {
   echo "[✓] MEMORY_MCP_TIMING_ENABLED=$value；服务已重启"
 }
 
+mode() {
+  if [[ $EUID -ne 0 ]]; then exec sudo "$0" mode "${1:-status}"; fi
+  local action="${1:-status}"
+  case "$action" in
+    status)
+      grep '^MEMORY_MCP_TOOL_MODE=' "$ENV_FILE" 2>/dev/null || echo 'MEMORY_MCP_TOOL_MODE=full'
+      return
+      ;;
+    full|recall-only|recall-schema|ping-only|speaker-probe) ;;
+    *) echo '用法：memory-mcp mode [full|speaker-probe|recall-only|recall-schema|ping-only|status]' >&2; exit 2 ;;
+  esac
+  if grep -q '^MEMORY_MCP_TOOL_MODE=' "$ENV_FILE"; then
+    sed -i "s/^MEMORY_MCP_TOOL_MODE=.*/MEMORY_MCP_TOOL_MODE=$action/" "$ENV_FILE"
+  else
+    echo "MEMORY_MCP_TOOL_MODE=$action" >> "$ENV_FILE"
+  fi
+  systemctl restart "$SERVICE"
+  sleep 1
+  systemctl is-active --quiet "$SERVICE" || { journalctl -u "$SERVICE" -n 40 --no-pager; exit 1; }
+  echo "[✓] MEMORY_MCP_TOOL_MODE=$action；服务已重启"
+}
+
 config() {
   echo "========== Memory MCP 配置 =========="
   echo "配置文件：$ENV_FILE（密钥不显示）"
@@ -77,6 +99,7 @@ case "${1:-help}" in
   logs) shift; logs "$@" ;;
   restart) [[ $EUID -eq 0 ]] || exec sudo "$0" restart; systemctl restart "$SERVICE"; status ;;
   timing) shift; timing "${1:-status}" ;;
+  mode) shift; mode "${1:-status}" ;;
   config) config ;;
   *) cat <<'EOF'
 Memory MCP 管理命令：
@@ -87,6 +110,7 @@ Memory MCP 管理命令：
   memory-mcp logs --history [行数]
   memory-mcp restart
   memory-mcp timing [on|off|status]
+  memory-mcp mode [full|speaker-probe|recall-only|recall-schema|ping-only|status]
   memory-mcp config
 EOF
   ;;
