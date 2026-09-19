@@ -56,6 +56,13 @@ fi
 git -C "$SOURCE_DIR" remote set-url origin "$GITHUB_REPO"
 ok 'Memory MCP 源码已准备；origin 保持 GitHub'
 
+# 旧版 bootstrap 在运行中拉到新版后，当前 shell 仍会继续执行旧逻辑。
+# 仅重入一次已拉取的最新脚本，保证新增安装步骤在本轮就生效。
+if [[ ${MEMORY_MCP_BOOTSTRAP_REFRESHED:-0} != 1 ]]; then
+  log '切换到刚拉取的最新部署逻辑'
+  exec env MEMORY_MCP_BOOTSTRAP_REFRESHED=1 bash "$SOURCE_DIR/bootstrap.sh"
+fi
+
 log '准备安全配置'
 GATEWAY_ENV="/opt/src/memory-gateway/.env"
 [[ -r "$GATEWAY_ENV" ]] || die "找不到现有 Gateway 配置：$GATEWAY_ENV"

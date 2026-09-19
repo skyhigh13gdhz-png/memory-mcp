@@ -54,6 +54,7 @@ bootstrap 会：
 - 用 **git ls-remote + 硬超时**探测 GitHub，避免腾讯云上 `git fetch` 无限卡住；
 - GitHub 直连不可用时尝试本机代理，再尝试已存在的 Gitee 只读镜像；
 - 源码操作设置 90 秒硬超时；
+- 首次拉取后自动重入一次最新 bootstrap，确保部署器自身新增步骤在当次安装就生效；
 - 保留现有 `MEMORY_MCP_PUBLIC_HOST`、`MEMORY_MCP_TOOL_MODE`、`MEMORY_MCP_LOG_LEVEL`，避免升级冲掉 ChatGPT 公网配置；
 - 重建独立 venv、systemd 服务并执行真实 smoke test。
 
