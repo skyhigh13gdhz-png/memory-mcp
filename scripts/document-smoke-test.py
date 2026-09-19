@@ -33,6 +33,7 @@ async def main() -> None:
     document_id = f"mcp-document-{marker}"
     speaker = "audit-mcp"
     original = f"MCP 文档验收 {marker}：初始预算为 42 元。"
+    expected = "初始预算为 42 元"
     replacement = "初始预算为 52 元"
     required = {
         "memory_retain",
@@ -69,13 +70,13 @@ async def main() -> None:
                 "document_id": document_id,
                 "speaker": speaker,
             })
-            if "42" not in result_text(fetched):
+            if expected not in result_text(fetched):
                 raise RuntimeError("新文档原文不符合预期")
 
             patch_args = {
                 "document_id": document_id,
                 "speaker": speaker,
-                "expected_text": "初始预算为 42 元",
+                "expected_text": expected,
                 "replacement_text": replacement,
                 "reason": "MCP Document API 端到端验收",
             }
@@ -85,7 +86,7 @@ async def main() -> None:
                 "speaker": speaker,
             })
             patched_text = result_text(patched)
-            if "52" not in patched_text or "42" in patched_text:
+            if replacement not in patched_text or expected in patched_text:
                 raise RuntimeError("Patch 后原文不符合预期")
 
             await call(session, "memory_document_patch", patch_args, expect_error=True)
