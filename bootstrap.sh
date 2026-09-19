@@ -96,7 +96,7 @@ systemctl stop "$SERVICE" 2>/dev/null || true
 systemctl reset-failed "$SERVICE" 2>/dev/null || true
 rm -rf "$INSTALL_DIR"; mkdir -p "$INSTALL_DIR/scripts"
 cp "$SOURCE_DIR/mcp_server.py" "$SOURCE_DIR/requirements.txt" "$INSTALL_DIR/"
-cp "$SOURCE_DIR/scripts/smoke-test.py" "$INSTALL_DIR/scripts/"
+cp "$SOURCE_DIR/scripts/smoke-test.py" "$SOURCE_DIR/scripts/document-smoke-test.py" "$INSTALL_DIR/scripts/"
 python3 -m venv "$INSTALL_DIR/.venv"
 PIP=("$INSTALL_DIR/.venv/bin/pip")
 if [[ -n "$SOURCE_PROXY" ]]; then

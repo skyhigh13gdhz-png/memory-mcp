@@ -8,7 +8,8 @@ import logging
 import os
 import time
 import uuid
-from typing import Any
+from typing import Any, Optional
+from urllib.parse import quote
 
 import httpx
 from mcp.server.fastmcp import FastMCP
@@ -62,6 +63,8 @@ mcp = FastMCP(
         "别名统一：靓仔/良仔→liangzai；Monica/灼暄/猫呢咔→monica。"
         "普通事实查找使用 memory_recall；明确要求保存时使用 memory_retain；"
         "只有需要综合多条长期记忆时才使用 memory_reflect。"
+        "修正原始记录时先用 memory_document_list/get 核对，再用 memory_document_patch 做精确替换；"
+        "Patch 冲突或歧义时停止并向用户确认。"
     ),
 )
 
@@ -80,10 +83,12 @@ def _timing_from_gateway(data: dict[str, Any]) -> dict[str, Any]:
 
 async def _gateway(
     path: str,
-    payload: dict[str, Any],
+    payload: dict[str, Any] | None = None,
     *,
     tool: str,
     timeout: float | None = None,
+    method: str = "POST",
+    params: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     # 生产默认关闭详细打点。关闭时不生成 UUID、不序列化 timing 日志，
     # 只保留原有请求路径和一个 perf_counter 用于 mcp_adapter_ms。
@@ -103,8 +108,12 @@ async def _gateway(
             if TIMING_ENABLED:
                 client_ready_ms = round((time.perf_counter() - connect_started) * 1000, 1)
                 upstream_started = time.perf_counter()
-            response = await client.post(
-                f"{GATEWAY_BASE_URL}{path}", headers=_headers(), json=payload
+            response = await client.request(
+                method,
+                f"{GATEWAY_BASE_URL}{path}",
+                headers=_headers(),
+                json=payload,
+                params=params,
             )
             if TIMING_ENABLED:
                 gateway_http_ms = round((time.perf_counter() - upstream_started) * 1000, 1)
@@ -182,11 +191,30 @@ else:
 
     if TOOL_MODE == "full":
         @mcp.tool()
-        async def memory_retain(content: str, speaker: str = "monica") -> dict[str, Any]:
-            """保存当前讲述者明确要求长期记住的信息。speaker 只传稳定 ID：liangzai 或 monica。不要用于普通闲聊或重复保存整段聊天。"""
+        async def memory_retain(
+            content: str,
+            speaker: str = "monica",
+            document_id: Optional[str] = None,
+            timestamp: Optional[str] = None,
+            update_mode: Optional[str] = None,
+        ) -> dict[str, Any]:
+            """保存一条明确要求长期记住的原始记录。一次自然记录动作对应一个 document；已知稳定来源时可传 document_id，已知事件时间时传 ISO 8601 timestamp。update_mode 仅允许 replace 或 append。不要重复保存整段聊天。"""
+            if update_mode not in {None, "replace", "append"}:
+                raise ValueError("update_mode must be replace or append")
+            payload: dict[str, Any] = {
+                "content": content,
+                "speaker": speaker,
+                "client_id": DEFAULT_CLIENT_ID,
+            }
+            if document_id is not None:
+                payload["document_id"] = document_id
+            if timestamp is not None:
+                payload["timestamp"] = timestamp
+            if update_mode is not None:
+                payload["update_mode"] = update_mode
             return await _gateway(
                 "/v1/memories/retain",
-                {"content": content, "speaker": speaker, "client_id": DEFAULT_CLIENT_ID},
+                payload,
                 tool="memory_retain",
                 timeout=RETAIN_TIMEOUT,
             )
@@ -199,6 +227,59 @@ else:
                 {"query": query, "speaker": speaker, "client_id": DEFAULT_CLIENT_ID},
                 tool="memory_reflect",
                 timeout=REFLECT_TIMEOUT,
+            )
+
+        @mcp.tool()
+        async def memory_document_list(
+            speaker: str = "monica",
+            query: Optional[str] = None,
+            limit: int = 100,
+            offset: int = 0,
+        ) -> dict[str, Any]:
+            """列出当前讲述者的原始记忆文档。需要定位待核对或待修正记录时使用；query 可按文档内容或 ID 搜索。"""
+            params: dict[str, Any] = {
+                "speaker": speaker,
+                "limit": max(1, min(limit, 100)),
+                "offset": max(0, offset),
+            }
+            if query:
+                params["q"] = query
+            return await _gateway(
+                "/v1/documents",
+                tool="memory_document_list",
+                method="GET",
+                params=params,
+            )
+
+        @mcp.tool()
+        async def memory_document_get(document_id: str, speaker: str = "monica") -> dict[str, Any]:
+            """读取当前讲述者的一份原始记忆文档，用于确认原文后再执行精确修正。"""
+            return await _gateway(
+                f"/v1/documents/{quote(document_id, safe='')}",
+                tool="memory_document_get",
+                method="GET",
+                params={"speaker": speaker},
+            )
+
+        @mcp.tool()
+        async def memory_document_patch(
+            document_id: str,
+            expected_text: str,
+            replacement_text: str,
+            reason: str,
+            speaker: str = "monica",
+        ) -> dict[str, Any]:
+            """对原始记忆文档做可审计的精确替换。先 Get 核对原文；expected_text 必须且只能命中一次。冲突或歧义时停止并向用户确认，不要整篇重写。"""
+            return await _gateway(
+                f"/v1/documents/{quote(document_id, safe='')}/patch",
+                {
+                    "speaker": speaker,
+                    "expected_text": expected_text,
+                    "replacement_text": replacement_text,
+                    "reason": reason,
+                    "client_id": DEFAULT_CLIENT_ID,
+                },
+                tool="memory_document_patch",
             )
 
 if __name__ == "__main__":

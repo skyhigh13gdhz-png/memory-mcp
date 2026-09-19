@@ -16,6 +16,17 @@ ChatGPT / Claude / Gemini / Qwen / 其他 MCP Client
 
 Memory MCP **不直接访问 Hindsight、不保存记忆、不包含某个 AI 客户端专属业务逻辑**。Gateway 是统一记忆 API 边界。
 
+## 正式工具
+
+- `memory_retain`：保存原始记录；可选传入稳定 `document_id`、ISO 8601 `timestamp` 和 `replace|append` 更新模式；
+- `memory_recall`：检索提取后的事实记忆；
+- `memory_reflect`：基于多条记忆综合分析；
+- `memory_document_list`：按 speaker 列出或搜索原始文档；
+- `memory_document_get`：读取一份原始文档；
+- `memory_document_patch`：对原文做单次、确定、可审计的 compare-and-swap 替换。
+
+修正工作流固定为 `List/Get → Patch`。`expected_text` 零次命中会返回冲突，多次命中会返回歧义；两种情况都不会静默覆盖原文。当前不对 AI 客户端暴露 Delete/Reprocess，避免异步 reprocess 与 delete 竞态导致已删文档复活。
+
 ## 2026-09-18 实际验收状态
 
 腾讯云测试机已经真实验证：
@@ -54,6 +65,7 @@ bootstrap 会：
 memory-mcp status
 memory-mcp health
 memory-mcp test
+memory-mcp test-documents
 memory-mcp logs
 memory-mcp logs --history 500
 memory-mcp restart
@@ -66,7 +78,7 @@ memory-mcp config
 ping-only      无参数固定返回；验证 MCP / ChatGPT / Tunnel 基础兼容性
 recall-schema  memory_recall(query: str) 固定返回；验证参数 Schema
 recall-only    真实 Recall；验证 MCP → Gateway → Hindsight
-full           Recall + Retain + Reflect 正常工具集
+full           Recall + Retain + Reflect + Document List/Get/Patch 正常工具集
 ```
 
 2026-09-18 的 A/B 结果：

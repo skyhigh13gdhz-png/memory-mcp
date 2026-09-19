@@ -30,6 +30,11 @@ test_chain() {
   "$INSTALL_DIR/.venv/bin/python" "$INSTALL_DIR/scripts/smoke-test.py"
 }
 
+test_documents() {
+  if [[ $EUID -ne 0 ]]; then exec sudo "$0" test-documents; fi
+  "$INSTALL_DIR/.venv/bin/python" "$INSTALL_DIR/scripts/document-smoke-test.py"
+}
+
 logs() {
   local mode="current" lines="200"
   [[ ${1:-} == "--history" ]] && { mode="history"; shift; }
@@ -96,6 +101,7 @@ case "${1:-help}" in
   status) status ;;
   health) health ;;
   test) test_chain ;;
+  test-documents) test_documents ;;
   logs) shift; logs "$@" ;;
   restart) [[ $EUID -eq 0 ]] || exec sudo "$0" restart; systemctl restart "$SERVICE"; status ;;
   timing) shift; timing "${1:-status}" ;;
@@ -106,6 +112,7 @@ Memory MCP 管理命令：
   memory-mcp status
   memory-mcp health
   memory-mcp test
+  memory-mcp test-documents
   memory-mcp logs [行数]
   memory-mcp logs --history [行数]
   memory-mcp restart
