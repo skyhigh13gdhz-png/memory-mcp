@@ -27,10 +27,10 @@ git_probe(){
 git_probe_proxy(){
   timeout 12s git -c "http.proxy=$LOCAL_HTTP_PROXY" -c "https.proxy=$LOCAL_HTTP_PROXY" "$@" >/dev/null 2>&1
 }
-if git_probe ls-remote "$GITHUB_REPO" HEAD; then
-  SOURCE="$GITHUB_REPO"; ok 'GitHub：git 直连可用，使用 GitHub Source of Truth'
-elif git_probe_proxy ls-remote "$GITHUB_REPO" HEAD; then
-  SOURCE="$GITHUB_REPO"; SOURCE_PROXY="$LOCAL_HTTP_PROXY"; ok 'GitHub：通过本机代理可用'
+if git_probe_proxy ls-remote "$GITHUB_REPO" HEAD; then
+  SOURCE="$GITHUB_REPO"; SOURCE_PROXY="$LOCAL_HTTP_PROXY"; ok 'GitHub：优先使用本机代理'
+elif git_probe ls-remote "$GITHUB_REPO" HEAD; then
+  SOURCE="$GITHUB_REPO"; ok 'GitHub：本机代理不可用，Git 直连可用'
 elif git_probe ls-remote "$GITEE_REPO" HEAD; then
   SOURCE="$GITEE_REPO"; warn 'GitHub 不可达，使用 Gitee 只读镜像'
 else
