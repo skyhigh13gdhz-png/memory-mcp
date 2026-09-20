@@ -38,6 +38,7 @@ async def main() -> None:
     required = {
         "memory_retain",
         "memory_document_list",
+        "memory_document_range",
         "memory_document_get",
         "memory_document_patch",
     }
@@ -65,6 +66,17 @@ async def main() -> None:
             })
             if document_id not in result_text(listed):
                 raise RuntimeError("列表结果中未找到新文档")
+
+            today = datetime.now(timezone.utc).date().isoformat()
+            ranged = await call(session, "memory_document_range", {
+                "speaker": speaker,
+                "start_date": today,
+                "end_date": today,
+                "limit": 10,
+            })
+            ranged_text = result_text(ranged)
+            if document_id not in ranged_text or original not in ranged_text:
+                raise RuntimeError("日期范围结果未返回新文档完整原文")
 
             fetched = await call(session, "memory_document_get", {
                 "document_id": document_id,

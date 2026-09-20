@@ -22,6 +22,7 @@ Memory MCP **不直接访问 Hindsight、不保存记忆、不包含某个 AI �
 - `memory_recall`：检索提取后的事实记忆；
 - `memory_reflect`：基于多条记忆综合分析；
 - `memory_document_list`：按 speaker 列出或搜索原始文档；
+- `memory_document_range`：按事件日期范围确定性读取全部原始文档和正文，供日报、周报及范围统计使用；
 - `memory_document_get`：读取一份原始文档；
 - `memory_document_patch`：对原文做单次、确定、可审计的 compare-and-swap 替换。
 
@@ -81,7 +82,7 @@ memory-mcp config
 ping-only      无参数固定返回；验证 MCP / ChatGPT / Tunnel 基础兼容性
 recall-schema  memory_recall(query: str) 固定返回；验证参数 Schema
 recall-only    真实 Recall；验证 MCP → Gateway → Hindsight
-full           Recall + Retain + Reflect + Document List/Get/Patch 正常工具集
+full           Recall + Retain + Reflect + Document List/Range/Get/Patch 正常工具集
 ```
 
 2026-09-18 的 A/B 结果：

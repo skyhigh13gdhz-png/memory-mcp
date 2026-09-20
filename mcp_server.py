@@ -8,6 +8,7 @@ import logging
 import os
 import time
 import uuid
+from datetime import date
 from typing import Any, Optional
 from urllib.parse import quote
 
@@ -63,6 +64,8 @@ mcp = FastMCP(
         "别名统一：靓仔/良仔→liangzai；Monica/灼暄/猫呢咔→monica。"
         "普通事实查找使用 memory_recall；明确要求保存时使用 memory_retain；"
         "只有需要综合多条长期记忆时才使用 memory_reflect。"
+        "凡是日报、周报、月报、时间范围统计或要求完整覆盖每一天的分析，必须先用 memory_document_range 按日期读取完整原文；"
+        "不能用 memory_recall/reflect 的语义结果判断某天没有记录。"
         "修正原始记录时先用 memory_document_list/get 核对，再用 memory_document_patch 做精确替换；"
         "Patch 冲突或歧义时停止并向用户确认。"
     ),
@@ -251,6 +254,37 @@ else:
                 tool="memory_document_list",
                 method="GET",
                 params=params,
+            )
+
+        @mcp.tool()
+        async def memory_document_range(
+            start_date: str,
+            end_date: str,
+            speaker: str = "monica",
+            limit: int = 100,
+        ) -> dict[str, Any]:
+            """按事件日期确定性读取一段时间内的全部原始记录及完整正文。日报、周报、月报、饮食/睡眠/交易等范围统计必须先调用本工具，不能用语义 Recall/Reflect 代替完整性查询。日期格式 YYYY-MM-DD，起止日期均包含。"""
+            try:
+                start = date.fromisoformat(start_date)
+                end = date.fromisoformat(end_date)
+            except ValueError as exc:
+                raise ValueError("start_date and end_date must use YYYY-MM-DD") from exc
+            if start > end:
+                raise ValueError("start_date must be <= end_date")
+            if (end - start).days > 366:
+                raise ValueError("date range must not exceed 366 days")
+            return await _gateway(
+                "/v1/documents",
+                tool="memory_document_range",
+                method="GET",
+                params={
+                    "speaker": speaker,
+                    "date_from": start.isoformat(),
+                    "date_to": end.isoformat(),
+                    "include_text": "true",
+                    "limit": max(1, min(limit, 1000)),
+                    "offset": 0,
+                },
             )
 
         @mcp.tool()
