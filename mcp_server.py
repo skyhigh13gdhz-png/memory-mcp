@@ -27,6 +27,8 @@ GATEWAY_TOKEN = os.environ.get("MEMORY_GATEWAY_TOKEN", "")
 DEFAULT_CLIENT_ID = os.environ.get("MEMORY_CLIENT_ID", "mcp-client")
 REQUEST_TIMEOUT = float(os.environ.get("MEMORY_GATEWAY_TIMEOUT", "60"))
 RECALL_TIMEOUT = float(os.environ.get("MEMORY_RECALL_TIMEOUT", "15"))
+RECALL_DEFAULT_RESULTS = int(os.environ.get("MEMORY_RECALL_DEFAULT_RESULTS", "20"))
+RECALL_MIN_RESULTS = int(os.environ.get("MEMORY_RECALL_MIN_RESULTS", "10"))
 RETAIN_TIMEOUT = float(os.environ.get("MEMORY_RETAIN_TIMEOUT", "90"))
 REFLECT_TIMEOUT = float(os.environ.get("MEMORY_REFLECT_TIMEOUT", "180"))
 MCP_HOST = os.environ.get("MEMORY_MCP_HOST", "127.0.0.1")
@@ -183,11 +185,21 @@ elif TOOL_MODE == "recall-schema":
 
 else:
     @mcp.tool()
-    async def memory_recall(query: str, speaker: str = "monica", max_results: int = 10) -> dict[str, Any]:
-        """按当前讲述者查询过去的事实、决定、经历、项目进度和历史讨论。speaker 默认 monica；只有当前 Project/当前聊天明确身份时才覆盖。"""
+    async def memory_recall(
+        query: str,
+        speaker: str = "monica",
+        max_results: int = RECALL_DEFAULT_RESULTS,
+    ) -> dict[str, Any]:
+        """按当前讲述者查询过去的事实、决定、经历、项目进度和历史讨论。默认返回 20 条，普通查询不要低于 10 条；跨日期完整分析不得用本工具代替 memory_document_range。speaker 默认 monica；只有当前 Project/当前聊天明确身份时才覆盖。"""
+        effective_max_results = max(RECALL_MIN_RESULTS, min(max_results, 100))
         return await _gateway(
             "/v1/memories/recall",
-            {"query": query, "speaker": speaker, "max_results": max(1, min(max_results, 100)), "client_id": DEFAULT_CLIENT_ID},
+            {
+                "query": query,
+                "speaker": speaker,
+                "max_results": effective_max_results,
+                "client_id": DEFAULT_CLIENT_ID,
+            },
             tool="memory_recall",
             timeout=RECALL_TIMEOUT,
         )

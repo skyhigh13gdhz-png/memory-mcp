@@ -19,7 +19,7 @@ Memory MCP **不直接访问 Hindsight、不保存记忆、不包含某个 AI �
 ## 正式工具
 
 - `memory_retain`：保存原始记录；可选传入稳定 `document_id`和 ISO 8601 `timestamp`；`replace|append` 只用于更新已知 `document_id`，新建时不传；
-- `memory_recall`：检索提取后的事实记忆；
+- `memory_recall`：检索提取后的事实记忆；默认返回 20 条，MCP 会把客户端传入的 1–9 自动提升到 10，日期范围完整分析必须改用 `memory_document_range`；
 - `memory_reflect`：基于多条记忆综合分析；
 - `memory_document_list`：按 speaker 列出或搜索原始文档；
 - `memory_document_range`：按事件日期范围确定性读取全部原始文档和正文，供日报、周报及范围统计使用；
