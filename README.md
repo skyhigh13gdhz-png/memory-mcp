@@ -18,7 +18,7 @@ Memory MCP **不直接访问 Hindsight、不保存记忆、不包含某个 AI �
 
 ## 正式工具
 
-- `memory_retain`：保存原始记录；可选传入稳定 `document_id`、ISO 8601 `timestamp` 和 `replace|append` 更新模式；
+- `memory_retain`：保存原始记录；可选传入稳定 `document_id`和 ISO 8601 `timestamp`；`replace|append` 只用于更新已知 `document_id`，新建时不传；
 - `memory_recall`：检索提取后的事实记忆；
 - `memory_reflect`：基于多条记忆综合分析；
 - `memory_document_list`：按 speaker 列出或搜索原始文档；

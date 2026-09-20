@@ -198,9 +198,11 @@ else:
             timestamp: Optional[str] = None,
             update_mode: Optional[str] = None,
         ) -> dict[str, Any]:
-            """保存一条明确要求长期记住的原始记录。一次自然记录动作对应一个 document；已知稳定来源时可传 document_id，已知事件时间时传 ISO 8601 timestamp。update_mode 仅允许 replace 或 append。不要重复保存整段聊天。"""
+            """保存一条明确要求长期记住的原始记录。一次自然记录动作对应一个 document；新建记录时不要传 update_mode。只有明确更新已知 document_id 时，才同时传 document_id 和 replace/append。已知事件时间时传 ISO 8601 timestamp。不要重复保存整段聊天。"""
             if update_mode not in {None, "replace", "append"}:
                 raise ValueError("update_mode must be replace or append")
+            if document_id is None:
+                update_mode = None
             payload: dict[str, Any] = {
                 "content": content,
                 "speaker": speaker,
