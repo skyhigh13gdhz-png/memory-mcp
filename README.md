@@ -58,6 +58,8 @@ bootstrap 会：
 - 保留现有 `MEMORY_MCP_PUBLIC_HOST`、`MEMORY_MCP_TOOL_MODE`、`MEMORY_MCP_LOG_LEVEL`，避免升级冲掉 ChatGPT 公网配置；
 - 重建独立 venv、systemd 服务并执行真实 smoke test。
 
+smoke test 固定使用 `speaker=audit-mcp-core` 和 `document_id=mcp-core-smoke`，重复部署只替换同一测试 Document，不再向 `liangzai` / `monica` 的人类记录写入部署测试数据。
+
 > GitHub 是唯一可写 Source of Truth；Gitee 只作为大陆部署镜像。镜像没有同步到目标 commit 时，不应把 Gitee 当成最新源码。
 
 ## 管理
