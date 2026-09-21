@@ -238,6 +238,19 @@ else:
             )
 
         @mcp.tool()
+        async def memory_operation_get(
+            operation_id: str,
+            speaker: str = "monica",
+        ) -> dict[str, Any]:
+            """查询一次异步记忆写入的真实状态。retain 返回 operation_id 只表示已受理；需要确认时用本工具区分 pending、processing、completed、failed 或 cancelled。completed 才表示处理完成；last_error 可能只是成功重试前的历史错误，不能覆盖当前 status。"""
+            return await _gateway(
+                f"/v1/operations/{quote(operation_id, safe='')}",
+                tool="memory_operation_get",
+                method="GET",
+                params={"speaker": speaker},
+            )
+
+        @mcp.tool()
         async def memory_reflect(query: str, speaker: str = "monica") -> dict[str, Any]:
             """只基于当前讲述者的长期记忆进行归纳或反思。speaker 只传稳定 ID：liangzai 或 monica。普通事实查找不要使用本工具。"""
             return await _gateway(
