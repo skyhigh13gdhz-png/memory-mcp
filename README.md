@@ -18,7 +18,7 @@ Memory MCP **不直接访问 Hindsight、不保存记忆、不包含某个 AI �
 
 ## 正式工具
 
-- `memory_retain`：异步受理原始记录；可选传入稳定 `document_id`和 ISO 8601 `timestamp`；`replace|append` 只用于更新已知 `document_id`，新建时不传；
+- `memory_retain`：异步受理原始记录；可选传入稳定 `document_id`、ISO 8601 `timestamp` 和本次自然记录的 `idempotency_key`；客户端重试必须复用同一幂等键，`replace|append` 只用于更新已知 `document_id`，新建时不传；
 - `memory_operation_get`：按 `operation_id` 查询异步写入的真实状态；`completed` 才表示处理完成；
 - `memory_recall`：检索提取后的事实记忆；默认返回 20 条，MCP 会把客户端传入的 1–9 自动提升到 10，日期范围完整分析必须改用 `memory_document_range`；
 - `memory_reflect`：基于多条记忆综合分析；

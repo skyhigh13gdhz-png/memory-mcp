@@ -212,8 +212,9 @@ else:
             document_id: Optional[str] = None,
             timestamp: Optional[str] = None,
             update_mode: Optional[str] = None,
+            idempotency_key: Optional[str] = None,
         ) -> dict[str, Any]:
-            """快速受理一条明确要求长期记住的原始记录，返回 operation_id 表示已进入后台处理，不要因未立即可检索而重试。一次自然记录动作对应一个 document；新建记录时不要传 update_mode。只有明确更新已知 document_id 时，才同时传 document_id 和 replace/append。已知事件时间时传 ISO 8601 timestamp。不要重复保存或改写后重投同一段内容。"""
+            """快速受理一条明确要求长期记住的原始记录，返回 operation_id 表示已进入后台处理。一次自然记录动作对应一个 document；新建记录时不要传 update_mode。只有明确更新已知 document_id 时，才同时传 document_id 和 replace/append。已知事件时间时传 ISO 8601 timestamp。客户端重试同一次自然记录时必须复用同一个 idempotency_key（至少 8 字符）；新记录使用新键。未传键时 Gateway 仍提供短窗口自动去重。不要因未立即可检索而改写后重投。"""
             if update_mode not in {None, "replace", "append"}:
                 raise ValueError("update_mode must be replace or append")
             if document_id is None:
@@ -230,6 +231,8 @@ else:
                 payload["timestamp"] = timestamp
             if update_mode is not None:
                 payload["update_mode"] = update_mode
+            if idempotency_key is not None:
+                payload["idempotency_key"] = idempotency_key
             return await _gateway(
                 "/v1/memories/retain",
                 payload,
